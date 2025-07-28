@@ -1,116 +1,113 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface ContentData {
+  title: string;
+  description: string;
+  keywords: string;
+  cleanedHtml: string;
+  originalUrl: string;
+  slug:string;
+  [key: string]: any;
+}
+
+interface WordPressConfig {
+  siteUrl?: string;
+  [key: string]: any; // For backward compatibility
+}
+
+// Get the secure token from environment variables
+const WORDPRESS_API_TOKEN = process.env.WORDPRESS_API_TOKEN || 'OXl6gPX17QBOxK/CArKl8jP/ZRPOt1VJZ4R9OjtRyCw=';
+const WORDPRESS_API_URL = process.env.WORDPRESS_API_URL || 'https://wordpress.buddyloan.com';
+
 export async function POST(request: NextRequest) {
   try {
-    const { content, config } = await request.json();
-
-    if (!content || !config.siteUrl || !config.username || !config.password) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const { content, config } = await request.json() as { content: ContentData; config?: WordPressConfig };
+    
+    // Validate required fields
+    if (!content?.title || !content.cleanedHtml) {
+      const missingFields = [];
+      if (!content?.title) missingFields.push('content.title');
+      if (!content?.cleanedHtml) missingFields.push('content.cleanedHtml');
+      
+      console.error('Missing required content fields:', missingFields);
+      return NextResponse.json({ 
+        success: false,
+        error: 'Missing required fields',
+        missingFields
+      }, { status: 400 });
     }
-
-    // WordPress REST API endpoint
-    const wpApiUrl = `${config.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/pages`;
-
-    // Prepare the post data
-    const postData = {
-      title: content.title,
-      content: content.cleanedHtml,
-      status: 'draft', // Create as draft first
-      meta: {
-        // Yoast SEO meta fields
-        _yoast_wpseo_title: content.title,
-        _yoast_wpseo_metadesc: content.description,
-        _yoast_wpseo_focuskw: content.keywords.split(',')[0]?.trim() || '',
-        _yoast_wpseo_metakeywords: content.keywords
-      },
-      // Custom fields for additional SEO data
-      custom_fields: [
-        {
-          key: 'original_url',
-          value: content.originalUrl
-        },
-        {
-          key: 'migration_date',
-          value: new Date().toISOString()
-        }
-      ]
-    };
-
-    // Create authentication header
-    const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
-
-    // Make the request to WordPress
-    const response = await fetch(wpApiUrl, {
+    
+    const apiUrl = `${WORDPRESS_API_URL}/wp-json/content-migration/v1/migrate-post`;
+    
+    console.log('Sending request to WordPress API:', {
+      url: apiUrl,
+      title: content.title.substring(0, 50) + (content.title.length > 50 ? '...' : ''),
+      slug:content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '',
+      contentLength: content.cleanedHtml?.length || 0
+    });
+    
+    // Extract slug from originalUrl if available
+    const slug = content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '';
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
+        'Authorization': `Bearer ${WORDPRESS_API_TOKEN}`
       },
-      body: JSON.stringify(postData)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      throw new Error(`WordPress API error: ${response.status} - ${errorData}`);
-    }
-
-    const result = await response.json();
-
-    // If Yoast is installed, update SEO data via separate API call
-    try {
-      await updateYoastSeoData(config, result.id, {
+      body: JSON.stringify({
         title: content.title,
-        description: content.description,
-        keywords: content.keywords
+        content: content.cleanedHtml,
+        status: 'draft',
+        slug:content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '', // Add the slug to the post data
+        meta: {
+          '_yoast_wpseo_title': content.title,
+          '_yoast_wpseo_metadesc': content.description,
+          '_yoast_wpseo_focuskw': content.keywords?.split(',')[0]?.trim() || '',
+          '_yoast_wpseo_metakeywords': content.keywords,
+          '_wp_old_slug': slug // Also store as old slug to prevent redirects
+        },
+        custom_fields: [
+          { key: 'original_url', value: content.originalUrl },
+          { key: 'migration_date', value: new Date().toISOString() }
+        ]
+      })
+    });
+    
+    const responseData = await response.json();
+    
+    if (!response.ok) {
+      console.error('WordPress API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: responseData
       });
-    } catch (yoastError) {
-      console.warn('Could not update Yoast SEO data:', yoastError);
-      // Continue anyway as the main content was published
+      
+      return NextResponse.json({
+        success: false,
+        error: responseData?.message || 'Failed to publish to WordPress',
+        details: responseData
+      }, { status: response.status });
     }
-
+    
+    console.log('Successfully published to WordPress:', {
+      postId: responseData.post_id,
+      editLink: responseData.edit_link
+    });
+    
     return NextResponse.json({
       success: true,
-      postId: result.id,
-      postUrl: result.link,
-      message: 'Content successfully published to WordPress'
+      data: responseData,
+      slug:content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '',
     });
-
   } catch (error) {
-    console.error('Error publishing to WordPress:', error);
-    return NextResponse.json(
-      { error: `Failed to publish to WordPress: ${error instanceof Error ? error.message : 'Unknown error'}` },
-      { status: 500 }
-    );
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error in publish-to-wordpress route:', error);
+    
+    return NextResponse.json({
+      success: false,
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error : undefined
+    }, { status: 500 });
   }
-}
-
-async function updateYoastSeoData(config: any, postId: number, seoData: any) {
-  // Update Yoast SEO data using WordPress meta API
-  const metaUrl = `${config.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/pages/${postId}`;
-  
-  const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
-  
-  const updateData = {
-    meta: {
-      _yoast_wpseo_title: seoData.title,
-      _yoast_wpseo_metadesc: seoData.description,
-      _yoast_wpseo_focuskw: seoData.keywords.split(',')[0]?.trim() || '',
-      _yoast_wpseo_metakeywords: seoData.keywords
-    }
-  };
-
-  const response = await fetch(metaUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${auth}`
-    },
-    body: JSON.stringify(updateData)
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to update Yoast SEO data: ${response.statusText}`);
-  }
-
-  return response.json();
 }

@@ -47,6 +47,7 @@ export default function Home() {
   const [extractedContent, setExtractedContent] = useState<ExtractedContent | null>(null);
   const [editedContent, setEditedContent] = useState('');
   const [editMode, setEditMode] = useState(false);
+  const [postId, setPostId] = useState('');
   
   // Update edited content when extracted content changes
   useEffect(() => {
@@ -106,7 +107,7 @@ export default function Home() {
   };
 
   const handlePublishToWordPress = async () => {
-    if (!extractedContent || !wordpressConfig.siteUrl || !wordpressConfig.username || !wordpressConfig.password) {
+    if (!extractedContent || !wordpressConfig.username || !wordpressConfig.password) {
       setError('Please fill in all WordPress configuration fields');
       return;
     }
@@ -129,7 +130,14 @@ export default function Home() {
       if (!response.ok) {
         throw new Error('Failed to publish to WordPress');
       }
-
+      const result = await response.json();
+      console.log('Publish response:', result);
+      // The WordPress response is nested inside the data property
+      if (result?.data?.post_id) {
+        setPostId(result.data.post_id);
+      } else {
+        console.warn('No post_id found in response:', result);
+      }
       setPublishStatus('success');
     } catch (err) {
       setPublishStatus('error');
@@ -263,7 +271,10 @@ export default function Home() {
                         </div>
                         <div className="space-y-2">
                           <Label>Source URL</Label>
-                          <Input value={extractedContent.originalUrl} readOnly />
+                          <Input 
+                            value={extractedContent.originalUrl ? new URL(extractedContent.originalUrl).pathname.replace(/^\/|\/$/g, '') : ''} 
+                            readOnly 
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -399,7 +410,7 @@ export default function Home() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
+                  {/* <div className="space-y-2">
                     <Label htmlFor="wpSiteUrl">WordPress Site URL</Label>
                     <Input
                       id="wpSiteUrl"
@@ -408,7 +419,7 @@ export default function Home() {
                       value={wordpressConfig.siteUrl}
                       onChange={(e) => setWordPressConfig(prev => ({ ...prev, siteUrl: e.target.value }))}
                     />
-                  </div>
+                  </div> */}
                   <div className="space-y-2">
                     <Label htmlFor="wpUsername">Username</Label>
                     <Input
@@ -458,10 +469,12 @@ export default function Home() {
                       <h4 className="font-medium mb-2">Ready to publish:</h4>
                       <ul className="text-sm text-gray-600 space-y-1">
                         <li>• Title: {extractedContent.title}</li>
+                        <li>• Source URL: {extractedContent.originalUrl ? new URL(extractedContent.originalUrl).pathname.replace(/^\/|\/$/g, '') : ''} </li>
                         <li>• Content: {extractedContent.content.length} characters</li>
                         <li>• SEO Description: {extractedContent.description.length} characters</li>
                         <li>• Keywords: {extractedContent.keywords.split(',').length} keywords</li>
                       </ul>
+                      
                     </div>
                   )}
 
@@ -470,10 +483,13 @@ export default function Home() {
                       <CheckCircle className="h-4 w-4 text-green-600" />
                       <AlertDescription className="text-green-800">
                         Content successfully published to WordPress with Yoast SEO data!
+                        
                       </AlertDescription>
                     </Alert>
                   )}
-
+                  {publishStatus === 'success' && (
+                  <a href={`https://wordpress.buddyloan.com/wp-admin/post.php?post=${postId}&action=edit`} className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-11 rounded-md px-8 w-full">View Post for edit</a>
+                  )}
                   <Button 
                     onClick={handlePublishToWordPress}
                     disabled={publishStatus === 'publishing' || !extractedContent}
