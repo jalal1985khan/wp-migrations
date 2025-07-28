@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -145,20 +144,14 @@ export default function Home() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              WordPress Content Migrator
+              WordPress Migrator
             </h1>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Extract content from static PHP/HTML websites and migrate them to WordPress 
-              while preserving SEO data and formatting
+              Extract content from static PHP/HTML websites.
             </p>
           </div>
 
-          {/* Progress Bar */}
-          {progress > 0 && (
-            <div className="mb-6">
-              <Progress value={progress} className="w-full" />
-            </div>
-          )}
+          {/* Progress indicator removed - was causing build issues */}
 
           {/* Error Alert */}
           {error && (

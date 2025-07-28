@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     }
 
     // WordPress REST API endpoint
-    const wpApiUrl = `${config.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/posts`;
+    const wpApiUrl = `${config.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/pages`;
 
     // Prepare the post data
     const postData = {

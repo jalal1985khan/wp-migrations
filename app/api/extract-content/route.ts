@@ -166,7 +166,7 @@ function extractContentFromHtml(html: string, originalUrl: string) {
       }
 
       // Filter attributes
-      const filteredAttrs = attrs.replace(/\s*([^=\s]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g, (m, name, val1, val2, val3) => {
+      const filteredAttrs = attrs.replace(/\s*([^=\s]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g, (m: string, name: string, val1: string, val2: string, val3: string) => {
         const value = val1 || val2 || val3 || '';
         const lowerName = name.toLowerCase();
         
