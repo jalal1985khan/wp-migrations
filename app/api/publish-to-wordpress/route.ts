@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
 
 async function updateYoastSeoData(config: any, postId: number, seoData: any) {
   // Update Yoast SEO data using WordPress meta API
-  const metaUrl = `${config.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/posts/${postId}`;
+  const metaUrl = `${config.siteUrl.replace(/\/$/, '')}/wp-json/wp/v2/pages/${postId}`;
   
   const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
   
