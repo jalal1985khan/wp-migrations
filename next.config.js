@@ -1,36 +1,37 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  images: { 
-    unoptimized: true 
-  },
-  // Disable React Strict Mode
-  reactStrictMode: false,
-  
   // Enable server-side rendering for dynamic routes
   output: 'standalone',
   
-  // Enable image optimization
+  // Image optimization configuration
   images: {
     domains: ['localhost'],
+    unoptimized: true,
   },
   
-  // Disable TypeScript type checking during build (handled by IDE)
+  // TypeScript configuration
   typescript: {
     ignoreBuildErrors: true,
   },
   
-  // Disable ESLint during build
+  // ESLint configuration
   eslint: {
     ignoreDuringBuilds: true,
   },
   
-  // Configure webpack to handle ES modules and disable problematic optimizations
+  // Experimental features
+  experimental: {
+    serverActions: true,
+    serverComponentsExternalPackages: ['react-quill'],
+    serverActionsBodySizeLimit: '2mb',
+  },
+  
+  // Webpack configuration
   webpack: (config, { isServer, dev }) => {
-    // Disable the filesystem cache
-    config.cache = false;
+    // Disable the filesystem cache in development
+    if (dev) {
+      config.cache = false;
+    }
     
     // Disable source maps in production for better performance
     if (!dev) {
@@ -41,6 +42,7 @@ const nextConfig = {
     config.experiments = {
       ...config.experiments,
       topLevelAwait: true,
+      layers: true,
     };
     
     // Fixes npm packages that depend on `fs` module

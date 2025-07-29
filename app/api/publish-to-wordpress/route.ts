@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { JSDOM } from 'jsdom';
+
+interface FAQItem {
+  question: string;
+  answer: string;
+}
 
 interface ContentData {
   title: string;
@@ -6,16 +12,19 @@ interface ContentData {
   keywords: string;
   cleanedHtml: string;
   originalUrl: string;
-  slug:string;
+  slug: string;
+  faqData?: {
+    enabled: boolean;
+    items: FAQItem[];
+  };
   [key: string]: any;
 }
 
 interface WordPressConfig {
   siteUrl?: string;
-  [key: string]: any; // For backward compatibility
+  [key: string]: any;
 }
 
-// Get the secure token from environment variables
 const WORDPRESS_API_TOKEN = process.env.WORDPRESS_API_TOKEN || 'OXl6gPX17QBOxK/CArKl8jP/ZRPOt1VJZ4R9OjtRyCw=';
 const WORDPRESS_API_URL = process.env.WORDPRESS_API_URL || 'https://wordpress.buddyloan.com';
 
@@ -38,17 +47,30 @@ export async function POST(request: NextRequest) {
     }
     
     const apiUrl = `${WORDPRESS_API_URL}/wp-json/content-migration/v1/migrate-post`;
-    
+    const slug = content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '';
+
     console.log('Sending request to WordPress API:', {
       url: apiUrl,
       title: content.title.substring(0, 50) + (content.title.length > 50 ? '...' : ''),
-      slug:content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '',
+      slug,
       contentLength: content.cleanedHtml?.length || 0
     });
-    
-    // Extract slug from originalUrl if available
-    const slug = content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '';
-    
+
+    // Process FAQ data
+    let faqData = content.faqData;
+    try {
+      if (!faqData) {
+        faqData = extractFAQData(content.cleanedHtml);
+        if (faqData) {
+          // Remove FAQ section from the main content
+          content.cleanedHtml = removeFAQSection(content.cleanedHtml);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing FAQ data:', error);
+      faqData = null;
+    }
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -59,13 +81,14 @@ export async function POST(request: NextRequest) {
         title: content.title,
         content: content.cleanedHtml,
         status: 'draft',
-        slug:content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '', // Add the slug to the post data
+        slug: slug,
+        faq_data: faqData || null,
         meta: {
           '_yoast_wpseo_title': content.title,
           '_yoast_wpseo_metadesc': content.description,
           '_yoast_wpseo_focuskw': content.keywords?.split(',')[0]?.trim() || '',
           '_yoast_wpseo_metakeywords': content.keywords,
-          '_wp_old_slug': slug // Also store as old slug to prevent redirects
+          '_wp_old_slug': slug
         },
         custom_fields: [
           { key: 'original_url', value: content.originalUrl },
@@ -98,7 +121,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: responseData,
-      slug:content.originalUrl ? new URL(content.originalUrl).pathname.replace(/^\/|\/$/g, '') : '',
+      slug: slug,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -109,5 +132,56 @@ export async function POST(request: NextRequest) {
       error: errorMessage,
       details: process.env.NODE_ENV === 'development' ? error : undefined
     }, { status: 500 });
+  }
+}
+
+// Helper function to extract FAQ data from HTML
+function extractFAQData(html: string): { enabled: boolean; items: FAQItem[] } | null {
+  try {
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const faqContainer = document.querySelector('.container.maincontainer #faqs');
+
+    if (!faqContainer) return null;
+
+    const cards = Array.from(document.querySelectorAll('.card'));
+    const faqItems = cards
+      .map(card => {
+        const question = card.querySelector('h3')?.textContent?.trim() || '';
+        const answer = card.querySelector('.card-body')?.innerHTML.trim() || '';
+        return { question, answer };
+      })
+      .filter(item => item.question && item.answer);
+
+    if (faqItems.length === 0) return null;
+
+    return {
+      enabled: true,
+      items: faqItems
+    };
+  } catch (error) {
+    console.error('Error extracting FAQ data:', error);
+    return null;
+  }
+}
+
+// Helper function to remove FAQ section from HTML
+function removeFAQSection(html: string): string {
+  try {
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    const faqContainer = document.querySelector('.container.maincontainer #faqs');
+    
+    if (faqContainer) {
+      const mainContainer = faqContainer.closest('.container.maincontainer');
+      if (mainContainer) {
+        mainContainer.remove();
+      }
+    }
+    
+    return document.body.innerHTML;
+  } catch (error) {
+    console.error('Error removing FAQ section:', error);
+    return html; // Return original HTML if there's an error
   }
 }
